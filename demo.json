@@ -1,18 +1,18 @@
 {
-    "sourceName": "[DEMO] Public Domain in the US",
-    "iconUrl": "https://raw.githubusercontent.com/50n50/demomodule/refs/heads/main/wikipedia-logo.png",
-    "description": "This is a demo module to showcase the capabilities of the Sulfur steaming app",
+    "sourceName": "Anizle",
+    "iconUrl": "https://anizle.com/favicon.ico",
     "author": {
-        "name": "Sulfur",
-        "icon": "https://raw.githubusercontent.com/50n50/sources/refs/heads/main/asset.png"
+        "name": "RiaSan",
+        "icon": "https://anizle.com/favicon.ico"
     },
     "version": "1.0.0",
-    "language": "English",
+    "language": "Turkish",
     "streamType": "HLS",
-    "quality": "720p",
-    "baseUrl": "https://en.wikipedia.org/wiki/List_of_films_in_the_public_domain_in_the_United_States",
-    "searchBaseUrl": "https://en.wikipedia.org/wiki/List_of_films_in_the_public_domain_in_the_United_States",
-    "scriptUrl": "https://raw.githubusercontent.com/50n50/demomodule/refs/heads/main/demo.js",
+    "quality": "1080p",
+    "baseUrl": "https://anizle.com",
+    "searchBaseUrl": "https://anizle.com/?s=%s",
+    "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/main/anizle.js",
     "asyncJS": true,
-    "streamAsyncJS": false
+    "streamAsyncJS": false,
+    "softsub": true
 }
