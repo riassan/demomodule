@@ -12,7 +12,5 @@
     "baseUrl": "https://anizle.com",
     "searchBaseUrl": "https://anizle.com/?s=%s",
     "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/main/demo.js",
-    "asyncJS": true,
-    "streamAsyncJS": false,
-    "softsub": true
+    "asyncJS": true
 }
