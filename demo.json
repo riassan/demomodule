@@ -10,7 +10,7 @@
     "streamType": "HLS",
     "quality": "1080p",
     "baseUrl": "https://codanime.net",
-    "searchBaseUrl": "https://codanime.net/?s=%s",
+    "searchBaseUrl": "https://codanime.net/?s=%25s",
     "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/main/demo.js",
     "asyncJS": true
 }
