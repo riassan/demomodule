@@ -9,8 +9,8 @@
     "language": "Turkish",
     "streamType": "HLS",
     "quality": "1080p",
-    "baseUrl": "https://anizle.com",
-    "searchBaseUrl": "https://anizle.com/?s=%s",
+    "baseUrl": "https://codanime.net",
+    "searchBaseUrl": "https://codanime.net/?s=%s",
     "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/main/demo.js",
     "asyncJS": true
 }
