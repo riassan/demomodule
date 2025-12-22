@@ -26,6 +26,7 @@ async function searchResults(keyword) {
                 img = img.indexOf("/") === 0 ? BASE_URL + img : img;
             }
 
+            // Detay linki olarak direkt API adresini veriyoruz
             results.push({
                 title: item.name || item.title || item.original_name,
                 image: img || "https://animecix.tv/storage/logo/logo.png",
@@ -34,7 +35,6 @@ async function searchResults(keyword) {
         }
         return JSON.stringify(results);
     } catch (e) {
-        console.log("Search Parse Error: " + e);
         return JSON.stringify([]);
     }
 }
@@ -51,11 +51,14 @@ async function extractDetails(url) {
 
     try {
         var data = JSON.parse(text);
-        if (data) {
+        // DÜZELTME: Veri "title" içinde olabilir
+        var info = data.title ? data.title : data;
+
+        if (info) {
             details.push({
-                description: data.description || data.plot || "Açıklama yok",
-                aliases: data.original_name || "N/A",
-                airdate: data.year ? String(data.year) : "Bilinmiyor"
+                description: info.description || info.plot || "Açıklama yok",
+                aliases: info.original_name || info.name_romanji || "N/A",
+                airdate: info.year ? String(info.year) : "Bilinmiyor"
             });
         }
     } catch (e) { }
@@ -63,10 +66,9 @@ async function extractDetails(url) {
 }
 
 // ------------------------------------------------------------------
-// 3. BÖLÜM LİSTESİ (PARALEL ÇEKİM & GÜÇLÜ PARSER)
+// 3. BÖLÜM LİSTESİ (HATASI GİDERİLDİ)
 // ------------------------------------------------------------------
 async function extractEpisodes(url) {
-    // 1. Ana Anime Verisini Çek
     var response = await soraFetch(url);
     if (!response) return JSON.stringify([]);
 
@@ -75,28 +77,40 @@ async function extractEpisodes(url) {
 
     try {
         var data = JSON.parse(text);
-        var titleId = data.id || data._id;
+        
+        // --- KRİTİK DÜZELTME BURADA ---
+        // API veriyi { "title": { ... } } şeklinde dönüyor.
+        // Önceki kodda direkt data.seasons diyorduk, bu yüzden undefined geliyordu.
+        var mainInfo = data.title ? data.title : data;
+        
+        var titleId = mainInfo.id || mainInfo._id;
 
-        // --- SENARYO 1: SEZONLU DİZİ (Paralel İstek) ---
-        if (data.seasons && data.seasons.length > 0) {
-            // Tüm sezonlar için istekleri hazırla
-            var promises = data.seasons.map(function(season) {
+        // --- SENARYO 1: SEZONLU DİZİ ---
+        if (mainInfo.seasons && mainInfo.seasons.length > 0) {
+            // Paralel istekleri hazırla
+            var promises = mainInfo.seasons.map(function(season) {
                 var sNum = season.number;
-                // Loglardan öğrendiğimiz doğru URL yapısı
+                // Doğru API çağrısı: ?seasonNumber=X
                 var seasonUrl = BASE_URL + "/secure/titles/" + titleId + "?seasonNumber=" + sNum;
+                
                 return soraFetch(seasonUrl).then(function(res) {
                     return res ? res.text() : null;
                 }).then(function(resText) {
                     if (!resText) return [];
                     try {
-                        var sData = JSON.parse(resText);
-                        // Bölümler nerede? Her yeri kontrol et.
-                        var rawEps = sData.videos || sData.episodes || (sData.title ? sData.title.videos : []) || [];
+                        var sJson = JSON.parse(resText);
+                        // Sezon isteğinin cevabı da "title" içinde olabilir
+                        var sData = sJson.title ? sJson.title : sJson;
+                        
+                        var rawEps = sData.videos || sData.episodes || [];
                         
                         return rawEps.map(function(ep, index) {
                             var epNum = parseFloat(ep.episode_number || ep.episode);
                             if (isNaN(epNum)) epNum = index + 1;
                             
+                            // Fragmanları filtrele
+                            if (ep.type === "embed" && ep.category === "trailer") return null;
+
                             return {
                                 href: BASE_URL + "/video/" + (ep.id || ep._id),
                                 number: epNum,
@@ -104,24 +118,22 @@ async function extractEpisodes(url) {
                                 title: (ep.name && ep.name !== "Bölüm " + epNum) ? ep.name : ("Bölüm " + epNum),
                                 date: ep.created_at || ""
                             };
-                        });
+                        }).filter(function(e) { return e !== null; }); // Null olanları (fragmanları) temizle
                     } catch (err) { return []; }
                 });
             });
 
-            // Tüm sezon isteklerini aynı anda gönder ve bekle
+            // Tüm sezonları bekle ve birleştir
             var results = await Promise.all(promises);
-            
-            // Sonuçları birleştir
             results.forEach(function(seasonEps) {
                 allEpisodes = allEpisodes.concat(seasonEps);
             });
 
         } 
-        // --- SENARYO 2: SEZONSUZ DİZİ ---
-        else if (data.videos && data.videos.length > 0) {
-             for (var k = 0; k < data.videos.length; k++) {
-                 var vid = data.videos[k];
+        // --- SENARYO 2: DÜZ VİDEO LİSTESİ ---
+        else if (mainInfo.videos && mainInfo.videos.length > 0) {
+             for (var k = 0; k < mainInfo.videos.length; k++) {
+                 var vid = mainInfo.videos[k];
                  if (vid.type === "embed" && vid.category === "trailer") continue;
 
                  var epNum2 = parseFloat(vid.episode_number || vid.episode);
@@ -137,8 +149,8 @@ async function extractEpisodes(url) {
         }
 
         // --- SENARYO 3: FİLM ---
-        if (allEpisodes.length === 0 && (data.video_id || data.videoId)) {
-            var vidId = data.video_id || data.videoId;
+        if (allEpisodes.length === 0 && (mainInfo.video_id || mainInfo.videoId)) {
+            var vidId = mainInfo.video_id || mainInfo.videoId;
             allEpisodes.push({
                 href: BASE_URL + "/video/" + vidId,
                 number: 1,
@@ -147,32 +159,27 @@ async function extractEpisodes(url) {
             });
         }
         
-        // Bölümleri ters çevir (Genelde en yeni en üstte gelir, düzeltiyoruz)
-        // Eğer sezonluysa zaten Promise.all sırasıyla geldiği için karıştırmayalım,
-        // Sadece tek liste varsa ters çevirelim.
-        if (!data.seasons || data.seasons.length === 0) {
+        // Sıralama (İsteğe bağlı, genellikle app halleder ama garanti olsun)
+        // Sezon varsa zaten sıralı ekledik. Yoksa ters çevir (eskiden yeniye)
+        if (!mainInfo.seasons || mainInfo.seasons.length === 0) {
             allEpisodes.reverse();
         }
 
     } catch (e) {
-        console.log("Episode Error: " + e);
+        console.log("Episodes Error: " + e);
     }
     return JSON.stringify(allEpisodes);
 }
 
 // ------------------------------------------------------------------
-// 4. VIDEO URL ÇÖZÜCÜ (JSON DÖNÜŞLÜ)
+// 4. VİDEO URL ÇÖZÜCÜ (Header Destekli)
 // ------------------------------------------------------------------
 async function extractStreamUrl(url) {
-    // 1. Video sayfasını çek
     var response = await soraFetch(url);
     if (!response) return JSON.stringify({ streams: [] });
 
     var html = await response.text();
-    
-    // 2. Iframe ara
-    var tauRegex = /src\s*=\s*["']([^"']*tau-video[^"']*)["']/;
-    var tauMatch = html.match(tauRegex);
+    var tauMatch = html.match(/src\s*=\s*["']([^"']*tau-video[^"']*)["']/);
 
     if (tauMatch) {
         var tauUrl = tauMatch[1];
@@ -194,7 +201,6 @@ async function extractStreamUrl(url) {
             
             var tauApiUrl = TAU_BASE + "/api/video/" + apiHash + "?vid=" + apiVid;
             
-            // Referer Başlığı ŞART
             var headers = { "Referer": BASE_URL + "/" };
             var tauResponse = await soraFetch(tauApiUrl, { headers: headers });
 
@@ -211,9 +217,6 @@ async function extractStreamUrl(url) {
                     }
 
                     if (m3u8Url) {
-                        // BURASI ÇOK ÖNEMLİ:
-                        // Sadece linki değil, oynatıcı için gerekli Headerları da gönderiyoruz.
-                        // "Veni Vidi Veci" modülündeki yapıya uygun olarak.
                         return JSON.stringify({
                             streams: [{
                                 title: "Otomatik (HLS)",
@@ -226,7 +229,6 @@ async function extractStreamUrl(url) {
                             }]
                         });
                     }
-
                 } catch (e) { }
             }
         }
@@ -235,19 +237,18 @@ async function extractStreamUrl(url) {
 }
 
 // ------------------------------------------------------------------
-// YARDIMCI: soraFetch (GELİŞMİŞ)
+// YARDIMCI: soraFetch (Cookie ve Encoding Destekli)
 // ------------------------------------------------------------------
 async function soraFetch(url, options) {
     if (!options) options = {};
     if (!options.headers) options.headers = {};
     
-    // Standart Headers
     options.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
     options.headers["X-Requested-With"] = "XMLHttpRequest";
     if (!options.headers["Referer"]) options.headers["Referer"] = BASE_URL + "/";
 
     try {
-        // Attığın modüldeki gibi 6 parametreli çağrı
+        // Attığın diğer modüllerdeki gibi gelişmiş çağrı
         return await fetchv2(
             url, 
             options.headers, 
@@ -258,7 +259,6 @@ async function soraFetch(url, options) {
         );
     } catch(e) {
         try {
-            // Fallback (Eski fetch)
             return await fetch(url, options);
         } catch(error) {
             return null;
