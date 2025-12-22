@@ -2,7 +2,7 @@
   "id": "tr.animecix.source",
   "name": "Animecix",
   "version": "1.2.0",
-  "icon": "https://animecix.tv/client/assets/icons/icon-512x512.png",
+  "icon": "https://raw.githubusercontent.com/riassan/demomodule/refs/heads/main/wikipedia-logo.png",
   "source_url": "https://animecix.tv",
   "author": "User",
   "type": "video",
