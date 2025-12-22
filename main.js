@@ -28,7 +28,7 @@ async function searchResults(keyword) {
             results.push({
                 title: item.name || item.title || item.original_name,
                 image: img || "https://animecix.tv/storage/logo/logo.png",
-                href: BASE_URL + "/secure/titles/" + item.id
+                href: BASE_URL + "/secure/titles/" + item.id // Detay için ID saklıyoruz
             });
         }
         return JSON.stringify(results);
@@ -61,10 +61,10 @@ async function extractDetails(url) {
 }
 
 // ------------------------------------------------------------------
-// 3. BÖLÜM LİSTESİ (SEZON DESTEKLİ - YENİ!)
+// 3. BÖLÜM LİSTESİ (LOGLARA GÖRE DÜZELTİLDİ)
 // ------------------------------------------------------------------
 async function extractEpisodes(url) {
-    // 1. Ana Anime Verisini Çek
+    // 1. Ana Anime Verisini Çek (Sezon bilgilerini öğrenmek için)
     var response = await soraFetch(url);
     if (!response) return JSON.stringify([]);
 
@@ -73,33 +73,43 @@ async function extractEpisodes(url) {
 
     try {
         var data = JSON.parse(text);
-        
-        // --- SENARYO 1: SEZONLU DİZİ (Verdiğin JSON Örneği) ---
+        var titleId = data.id || data._id; // ID'yi al (örn: 7346)
+
+        // --- SENARYO 1: SEZONLU DİZİ ---
+        // Loglarda: secure/titles/25?seasonNumber=1 görüldü.
         if (data.seasons && data.seasons.length > 0) {
-            // Sezonları döngüye al (Sıralı gelmeyebilir, id'ye göre çekeceğiz)
+            
             for (var i = 0; i < data.seasons.length; i++) {
                 var season = data.seasons[i];
-                // Her sezon için API'ye ek istek atıyoruz: /secure/seasons/{ID}
-                var seasonUrl = BASE_URL + "/secure/seasons/" + season.id;
+                var sNum = season.number;
+                
+                // Loglardaki doğru API çağrısı:
+                // https://animecix.tv/secure/titles/{ID}?seasonNumber={NUM}
+                var seasonUrl = url + "?seasonNumber=" + sNum;
                 
                 var sResp = await soraFetch(seasonUrl);
                 if (sResp) {
                     var sText = await sResp.text();
                     var sData = JSON.parse(sText);
                     
-                    // Sezon içindeki bölümleri al
-                    var sEps = sData.episodes || [];
+                    // Sezon sorgusu bazen direkt videos array döner, bazen obje içinde döner
+                    // Loglara göre sData.videos olma ihtimali yüksek
+                    var sEps = sData.videos || sData.episodes || [];
+                    
+                    if (sData.title && sData.title.videos) {
+                        sEps = sData.title.videos;
+                    }
+
                     for (var j = 0; j < sEps.length; j++) {
                         var ep = sEps[j];
-                        var epNum = parseFloat(ep.episode_number || ep.episode);
-                        if (isNaN(epNum)) epNum = j + 1;
-
+                        var epNum = parseFloat(ep.episode_number || ep.episode || (j + 1));
+                        
                         allEpisodes.push({
-                            // Video ID'sini href'e sakla
+                            // Video ID'sini href'e sakla: /video/705509
                             href: BASE_URL + "/video/" + ep.id,
                             number: epNum,
-                            season: season.number || 1, // Uygulama sezonu destekliyorsa
-                            title: "Sezon " + (season.number || 1) + " - Bölüm " + epNum,
+                            season: sNum,
+                            title: "S" + sNum + " B" + epNum + (ep.name ? " - " + ep.name : ""),
                             date: ep.created_at || ""
                         });
                     }
@@ -107,19 +117,17 @@ async function extractEpisodes(url) {
             }
         } 
         
-        // --- SENARYO 2: DÜZ LİSTE (Eski usül veya tek sezon) ---
+        // --- SENARYO 2: SEZONSUZ DİZİ (Eski tip) ---
         else if (data.videos && data.videos.length > 0) {
-             // Sadece fragman değilse ekle (type kontrolü yapılabilir ama riskli)
              for (var k = 0; k < data.videos.length; k++) {
                  var vid = data.videos[k];
-                 // Fragmanları ele (Embed type genelde fragmandır)
                  if (vid.type === "embed" && vid.category === "trailer") continue;
 
-                 var epNum2 = parseFloat(vid.episode_number || vid.episode);
+                 var epNum2 = parseFloat(vid.episode_number || vid.episode || (k + 1));
                  allEpisodes.push({
                     href: BASE_URL + "/video/" + vid.id,
-                    number: isNaN(epNum2) ? k + 1 : epNum2,
-                    title: vid.name || ("Bölüm " + (k+1)),
+                    number: epNum2,
+                    title: vid.name || ("Bölüm " + epNum2),
                     date: vid.created_at || ""
                 });
              }
@@ -136,8 +144,8 @@ async function extractEpisodes(url) {
             });
         }
         
-        // Eğer Sezonlu çekim yaptıysak liste karışık olabilir, sıralamak iyi olur ama zorunlu değil.
-        // Genellikle uygulama kendi sıralar.
+        // Bölümleri ters çevir (Genelde en yeni en üstte gelir, biz 1'den başlasın isteriz)
+        allEpisodes.reverse();
 
     } catch (e) {
         console.log("Episode Error: " + e);
@@ -146,15 +154,16 @@ async function extractEpisodes(url) {
 }
 
 // ------------------------------------------------------------------
-// 4. VIDEO URL ÇÖZÜCÜ
+// 4. VIDEO URL ÇÖZÜCÜ (LOGLARA GÖRE TAU API)
 // ------------------------------------------------------------------
 async function extractStreamUrl(url) {
+    // url: https://animecix.tv/video/705509
     var response = await soraFetch(url);
     if (!response) return "";
 
     var html = await response.text();
     
-    // Iframe ara
+    // Iframe ara: src="//tau-video.xyz/embed/..."
     var tauRegex = /src\s*=\s*["']([^"']*tau-video[^"']*)["']/;
     var tauMatch = html.match(tauRegex);
 
@@ -162,21 +171,28 @@ async function extractStreamUrl(url) {
         var tauUrl = tauMatch[1];
         if (tauUrl.indexOf("//") === 0) tauUrl = "https:" + tauUrl;
 
+        // URL: https://tau-video.xyz/embed/67b11ce4...?vid=705509
         var hashMatch = tauUrl.match(/\/embed\/([a-zA-Z0-9]+)/);
         var vidMatch = tauUrl.match(/vid=([0-9]+)/);
 
         if (hashMatch) {
             var apiHash = hashMatch[1];
             var apiVid = "";
+            
+            // vid parametresini iframe url'inden almaya çalış
             if (vidMatch) {
                 apiVid = vidMatch[1];
             } else {
+                // Yoksa bizim gönderdiğimiz url'den al
                 var parts = url.split("/");
                 apiVid = parts[parts.length - 1];
             }
             
+            // Loglardaki API isteği:
+            // https://tau-video.xyz/api/video/HASH?vid=VID
             var tauApiUrl = TAU_BASE + "/api/video/" + apiHash + "?vid=" + apiVid;
             
+            // Referer Başlığı ŞART
             var headers = { "Referer": BASE_URL };
             var tauResponse = await soraFetch(tauApiUrl, { headers: headers });
 
@@ -184,6 +200,8 @@ async function extractStreamUrl(url) {
                 var tauText = await tauResponse.text();
                 try {
                     var tauData = JSON.parse(tauText);
+                    
+                    // Loglarda "list" yoksa direkt "url" olabilir, her ikisini de kontrol et
                     if (tauData.list && tauData.list.length > 0) {
                         return tauData.list[0].url;
                     } else if (tauData.url) {
