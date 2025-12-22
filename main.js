@@ -1,126 +1,126 @@
-// Global Sabitler
+///////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////        Main Functions           //////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+
 const BASE_URL = "https://animecix.tv";
 const TAU_BASE = "https://tau-video.xyz";
 
-// Headers tanımları (Animecix isteği reddetmesin diye)
-const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Referer": "https://animecix.tv/",
-    "X-Requested-With": "XMLHttpRequest"
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////        Main Functions           //////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////
-
-// 1. ARAMA FONKSİYONU
 async function searchResults(keyword) {
     try {
-        const searchUrl = `${BASE_URL}/secure/search/${encodeURIComponent(keyword)}?limit=20`;
-        // Sulfur fetch yapısına uygun çağırma
-        const response = await fetch(searchUrl, { method: "GET", headers: headers });
-        // Demo koduna göre response string/json gelebilir, parse ediyoruz
-        const data = JSON.parse(response); 
+        const encodedKeyword = encodeURIComponent(keyword);
+        // Animecix API Search Endpoint
+        const searchUrl = `${BASE_URL}/secure/search/${encodedKeyword}?limit=20`;
+        
+        const response = await fetchv2(searchUrl);
+        // Animecix JSON döner, bu yüzden .json() deniyoruz.
+        // Eğer uygulama .json() desteklemezse aşağıda catch'e düşer, text parse ederiz.
+        const data = await response.json();
 
         const results = [];
-        const items = Array.isArray(data) ? data : (data.results || []);
+        // API bazen array, bazen {results: []} dönebilir.
+        const items = Array.isArray(data) ? data : (data.results || data.titles || []);
 
         for (const item of items) {
+            // Görsel URL'ini düzeltme
+            let img = item.poster || item.image || item.cover;
+            if (img && !img.startsWith("http")) {
+                img = img.startsWith("/") ? BASE_URL + img : img;
+            }
+
             results.push({
                 title: item.name || item.title || item.original_name,
-                // href kısmına ID'yi veya tam API linkini saklıyoruz
+                // href kısmına Detay API linkini saklıyoruz ki sonraki adımda kullanalım
                 href: `${BASE_URL}/secure/titles/${item.id}`,
-                image: item.poster || item.image || item.cover || ""
+                image: img || "https://animecix.tv/storage/logo/logo.png"
             });
         }
 
         return JSON.stringify(results);
-
-    } catch (error) {
-        console.log('Search error:' + error);
-        return JSON.stringify([{ title: 'Hata', image: '', href: '' }]);
+    }
+    catch (error) {
+        console.log('SearchResults function error: ' + error);
+        return JSON.stringify([]);
     }
 }
 
-// 2. DETAY FONKSİYONU (Açıklama vb.)
 async function extractDetails(url) {
     try {
-        // url değişkeni searchResults'dan gelen "href" değeridir
-        const response = await fetch(url, { method: "GET", headers: headers });
-        const data = JSON.parse(response);
+        // url değişkeni searchResults'dan gelen API linkidir
+        const response = await fetchv2(url);
+        const data = await response.json();
 
-        const transformedResults = [{
-            description: data.description || data.plot || 'Açıklama yok',
-            aliases: data.original_name || '',
-            airdate: data.year ? String(data.year) : 'Bilinmiyor'
-        }];
+        const details = [];
 
-        return JSON.stringify(transformedResults);
+        if (data) {
+            details.push({
+                description: data.description || data.plot || "Açıklama yok",
+                aliases: data.original_name || "Bilinmiyor",
+                airdate: data.year ? String(data.year) : "Bilinmiyor"
+            });
+        }
 
-    } catch (error) {
+        return JSON.stringify(details);
+    }
+    catch (error) {
         console.log('Details error:' + error);
         return JSON.stringify([{
-            description: 'Detay yüklenemedi',
-            aliases: '',
-            airdate: ''
+            description: 'Error loading description',
+            aliases: 'Unknown',
+            airdate: 'Unknown'
         }]);
     }
 }
 
-// 3. BÖLÜM LİSTESİ
 async function extractEpisodes(url) {
     try {
         // url yine detay API linkimiz
-        const response = await fetch(url, { method: "GET", headers: headers });
-        const data = JSON.parse(response);
+        const response = await fetchv2(url);
+        const data = await response.json();
 
         const episodes = [];
+        // Animecix yapısında videolar "videos" arrayinde gelir
         const videoList = data.videos || data.episodes || [];
 
-        // Videoları listeye ekle
-        // Not: Sulfur bölüm sıralaması için 'number' alanına bakıyor olabilir
-        videoList.forEach((vid) => {
-            episodes.push({
-                number: vid.episode_number || vid.episode || vid.order,
-                // href kısmına videonun ID'sini veya izleme linkini saklıyoruz
-                href: `${BASE_URL}/video/${vid.id}`, 
-                title: vid.name || `Bölüm ${vid.episode_number}`
-            });
-        });
-
-        // Eğer dizi değil filmse ve videos listesi boşsa
-        if (episodes.length === 0 && data.video_id) {
+        // Eğer dizi değil filmse ve videos boşsa
+        if (videoList.length === 0 && data.video_id) {
              episodes.push({
-                number: 1,
                 href: `${BASE_URL}/video/${data.video_id}`,
+                number: 1,
                 title: "Film / İzle"
             });
+        } else {
+            for (const vid of videoList) {
+                episodes.push({
+                    // href kısmına videonun sayfa linkini koyuyoruz (Stream aşamasında iframe arayacağız)
+                    href: `${BASE_URL}/video/${vid.id}`,
+                    number: parseFloat(vid.episode_number || vid.episode || vid.order || 0)
+                });
+            }
         }
-
+        
         // Genellikle bölümler tersten gelir, düzeltelim
         return JSON.stringify(episodes.reverse());
 
-    } catch (error) {
+    }
+    catch (error) {
         console.log('Episodes error:' + error);
-        return JSON.stringify([{ number: 'Error', href: '' }]);
+        return JSON.stringify([]);
     }
 }
 
-// 4. STREAM URL (VİDEO ÇÖZME)
 async function extractStreamUrl(url) {
     try {
-        // 1. Adım: Animecix video sayfasını al (Iframe'i bulmak için)
-        // url: https://animecix.tv/video/12345
-        const htmlResponse = await fetch(url, { method: "GET", headers: headers });
-        // Demo koduna göre htmlResponse direkt string olabilir
-        const html = htmlResponse; 
+        // 1. Adım: Animecix video sayfasını HTML olarak çek (fetchv2 ile)
+        const response = await fetchv2(url);
+        const html = await response.text();
 
         // 2. Adım: Iframe içindeki Tau Video linkini Regex ile bul
-        const tauMatch = html.match(/src="([^"]*tau-video[^"]*)"/);
+        const tauRegex = /src="([^"]*tau-video[^"]*)"/;
+        const tauMatch = tauRegex.exec(html);
         
         if (!tauMatch) {
             console.log("Tau player bulunamadı");
-            return "";
+            return "https://error.org";
         }
 
         let tauUrl = tauMatch[1];
@@ -128,8 +128,11 @@ async function extractStreamUrl(url) {
 
         // 3. Adım: Tau API için Hash ve ID'yi ayıkla
         // URL Örneği: https://tau-video.xyz/embed/HASH?vid=ID
-        const hashMatch = tauUrl.match(/\/embed\/([a-zA-Z0-9]+)/);
-        const vidMatch = tauUrl.match(/vid=([0-9]+)/);
+        const hashRegex = /\/embed\/([a-zA-Z0-9]+)/;
+        const vidRegex = /vid=([0-9]+)/;
+
+        const hashMatch = hashRegex.exec(tauUrl);
+        const vidMatch = vidRegex.exec(tauUrl);
 
         if (hashMatch) {
             const apiHash = hashMatch[1];
@@ -139,11 +142,8 @@ async function extractStreamUrl(url) {
             const tauApiUrl = `${TAU_BASE}/api/video/${apiHash}?vid=${apiVid}`;
 
             // 4. Adım: Tau API'den asıl video linkini (m3u8) al
-            const tauResponse = await fetch(tauApiUrl, { 
-                method: "GET",
-                headers: { "Referer": BASE_URL } 
-            });
-            const tauData = JSON.parse(tauResponse);
+            const tauResponse = await fetchv2(tauApiUrl);
+            const tauData = await tauResponse.json();
 
             let finalUrl = "";
 
@@ -153,15 +153,31 @@ async function extractStreamUrl(url) {
             } else if (tauData.url) {
                 finalUrl = tauData.url;
             }
-
-            // Sulfur demo'suna göre direkt string URL dönmeli
+            
             return finalUrl;
         }
 
-        return "";
+        return "https://error.org";
 
-    } catch (error) {
-        console.log('Stream URL error:' + error);
-        return "";
     }
+    catch (error) {
+        console.log('Stream URL error:' + error);
+        return "https://error.org";
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////        Helper Functions       ////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+
+// AnimeKai'den kalan yardımcılar, lazım olursa diye dursun.
+function cleanJsonHtml(jsonHtml) {
+    if (!jsonHtml) return "";
+    return jsonHtml
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\\\\/g, '\\')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\r/g, '\r');
 }
