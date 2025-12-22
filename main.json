@@ -1,18 +1,17 @@
 {
     "sourceName": "Animecix",
     "iconUrl": "https://animecix.tv/client/assets/icons/icon-512x512.png",
-    "description": "Animecix Sulfur Modülü",
     "author": {
         "name": "User",
         "icon": "https://animecix.tv/client/assets/icons/icon-512x512.png"
     },
-    "version": "1.0.0",
+    "version": "2.0.0",
     "language": "Turkish",
     "streamType": "HLS",
     "quality": "Auto",
     "baseUrl": "https://animecix.tv",
     "searchBaseUrl": "https://animecix.tv",
-    "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/refs/heads/main/main.js",
+    "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/refs/heads/main/main.json",
     "asyncJS": true,
-    "streamAsyncJS": true
+    "type": "anime"
 }
