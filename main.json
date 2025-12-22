@@ -1,0 +1,11 @@
+{
+  "name": "Animecix",
+  "version": "1.2.0",
+  "icon": "https://animecix.tv/client/assets/icons/icon-512x512.png",
+  "source_url": "https://animecix.tv",
+  "author": "User",
+  "type": "video",
+  "language": "tr",
+  "script": "main.js",
+  "nsfw": false
+}
