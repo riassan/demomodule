@@ -5,13 +5,13 @@
         "name": "User",
         "icon": "https://animecix.tv/client/assets/icons/icon-512x512.png"
     },
-    "version": "2.0.0",
+    "version": "3.0.0",
     "language": "Turkish",
     "streamType": "HLS",
     "quality": "Auto",
     "baseUrl": "https://animecix.tv",
     "searchBaseUrl": "https://animecix.tv",
     "scriptUrl": "https://raw.githubusercontent.com/riassan/demomodule/refs/heads/main/main.json",
-    "asyncJS": true,
-    "type": "anime"
+    "type": "anime",
+    "asyncJS": true
 }
