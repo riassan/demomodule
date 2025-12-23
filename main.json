@@ -5,9 +5,9 @@
         "name": "User",
         "icon": "https://animecix.tv/client/assets/icons/icon-512x512.png"
     },
-    "version": "13.0.0",
+    "version": "16.0.0",
     "language": "Turkish",
-    "streamType": "HLS",
+    "streamType": "MP4",
     "quality": "Auto",
     "baseUrl": "https://animecix.tv",
     "searchBaseUrl": "https://animecix.tv",
