@@ -18,8 +18,6 @@ async function searchResults(keyword) {
 
         for (var i = 0; i < items.length; i++) {
             var item = items[i];
-            
-            // Poster kontrolü
             var img = item.poster || item.image || item.cover;
             if (img && img.indexOf("http") === -1) {
                 img = img.indexOf("/") === 0 ? BASE_URL + img : BASE_URL + "/" + img;
@@ -61,7 +59,7 @@ async function extractDetails(url) {
 }
 
 // ==============================================================================
-// 3. BÖLÜM LİSTESİ (FRAGMAN FİLTRELİ)
+// 3. BÖLÜM LİSTESİ (FİLTRELER DÜZELTİLDİ)
 // ==============================================================================
 async function extractEpisodes(url) {
     var response = await soraFetch(url);
@@ -76,14 +74,11 @@ async function extractEpisodes(url) {
         var titleId = mainInfo.id || mainInfo._id;
 
         // --- SENARYO 1: SEZONLU DİZİ ---
-        // Sadece İLK sezonu çekiyoruz.
         if (mainInfo.seasons && mainInfo.seasons.length > 0) {
-            
-            // İlk sezon numarasını al
+            // Sadece İLK sezonu çekiyoruz (Karmaşayı önlemek için)
             var firstSeason = mainInfo.seasons[0];
             var sNum = firstSeason.number; 
             
-            // API İsteği: secure/titles/123?seasonNumber=1
             var seasonUrl = BASE_URL + "/secure/titles/" + titleId + "?seasonNumber=" + sNum;
             var sResp = await soraFetch(seasonUrl);
             
@@ -91,14 +86,15 @@ async function extractEpisodes(url) {
                 var sText = await sResp.text();
                 var sJson = JSON.parse(sText);
                 var sData = sJson.title ? sJson.title : sJson;
-                
                 var rawEps = sData.videos || sData.episodes || [];
 
                 for (var k = 0; k < rawEps.length; k++) {
                     var ep = rawEps[k];
                     
-                    // Fragmanları atla
-                    if (ep.type === "embed") continue;
+                    // --- KRİTİK DÜZELTME ---
+                    // Önceki hatamız: 'embed' tipini tamamen engelliyorduk.
+                    // Şimdi sadece 'category'si 'trailer' olanları veya YouTube linklerini engelliyoruz.
+                    if (ep.category === "trailer" || (ep.name && ep.name.toLowerCase().includes("tanıtım"))) continue;
                     if (ep.url && (ep.url.indexOf("youtube") !== -1 || ep.url.indexOf("youtu.be") !== -1)) continue;
 
                     var epId = ep.id || ep._id;
@@ -122,8 +118,8 @@ async function extractEpisodes(url) {
              for (var k = 0; k < mainInfo.videos.length; k++) {
                  var vid = mainInfo.videos[k];
                  
-                 // Fragmanları atla
-                 if (vid.type === "embed") continue;
+                 // Fragman filtresi
+                 if (vid.category === "trailer") continue;
                  if (vid.url && (vid.url.indexOf("youtube") !== -1 || vid.url.indexOf("youtu.be") !== -1)) continue;
 
                  var vidId = vid.id || vid._id;
@@ -151,13 +147,14 @@ async function extractEpisodes(url) {
 
     } catch (e) {
         console.log("Episodes Error: " + e);
+        allEpisodes.push({ href: "", number: 1, title: "Hata: " + e.message });
     }
     
     return JSON.stringify(allEpisodes);
 }
 
 // ==============================================================================
-// 4. VİDEO URL ÇÖZÜCÜ (MP4 & HLS DESTEKLİ)
+// 4. VİDEO URL ÇÖZÜCÜ (MP4 VE HEADER DESTEKLİ)
 // ==============================================================================
 async function extractStreamUrl(url) {
     var response = await soraFetch(url);
@@ -186,10 +183,9 @@ async function extractStreamUrl(url) {
                 apiVid = parts[parts.length - 1];
             }
             
-            // Tau API çağrısı
+            // Tau API İsteği
             var tauApiUrl = TAU_BASE + "/api/video/" + apiHash + "?vid=" + apiVid;
             
-            // Headerlar: Referer'ı Tau'nun kendi adresi yapıyoruz çünkü loglarda öyle
             var headers = { 
                 "Referer": BASE_URL + "/",
                 "Origin": BASE_URL,
@@ -204,28 +200,24 @@ async function extractStreamUrl(url) {
                     var tauText = await tauResponse.text();
                     var tauData = JSON.parse(tauText);
                     var finalUrl = "";
-                    var type = "mp4"; // Varsayılan
-
-                    // Loglara göre bazen "list" içinde, bazen direkt "url"
+                    
+                    // Loglara göre veri bazen "list", bazen "url" içinde
                     if (tauData.list && tauData.list.length > 0) {
                         finalUrl = tauData.list[0].url;
                     } else if (tauData.url) {
                         finalUrl = tauData.url;
                     }
 
-                    // Uzantıya göre tip belirle
-                    if (finalUrl.includes(".m3u8")) type = "hls";
-                    else if (finalUrl.includes(".mp4")) type = "mp4";
-
                     if (finalUrl) {
                         return JSON.stringify({
                             streams: [{
-                                title: "Otomatik (720p/1080p)",
+                                title: "Otomatik",
                                 streamUrl: finalUrl,
-                                type: type, // hls veya mp4
+                                // Eğer URL .m3u8 değilse (mp4 ise) type belirtmiyoruz, app otomatik anlıyor.
+                                // Sadece HLS ise belirtiyoruz.
+                                type: finalUrl.includes(".m3u8") ? "hls" : "mp4",
                                 headers: {
-                                    // Videoyu çekerken Referer Tau olmalı
-                                    "Referer": TAU_BASE + "/",
+                                    "Referer": TAU_BASE + "/", // Video için referer Tau olmalı
                                     "User-Agent": headers["User-Agent"]
                                 }
                             }]
